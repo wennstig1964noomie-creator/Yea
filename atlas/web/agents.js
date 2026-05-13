@@ -1,11 +1,10 @@
 // Atlas agent runner. Each agent is a JS body with a `run(ctx)` function.
 // The body is evaluated inside a fresh AsyncFunction so syntax errors land
-// in `last_output` and never break the rest of Atlas. The scheduler ticks
-// every two seconds and runs whichever agents are due.
+// in `last_output` and never break the rest of Atlas.
 
 import * as brain from "./brain.js";
 
-const tickers = new Map(); // id -> last run timestamp
+const tickers = new Map();
 
 class AgentContext {
   constructor(row, logSink) {
@@ -24,6 +23,8 @@ class AgentContext {
   async stats()  { return brain.stats(); }
   async think(focus) { return brain.think(focus); }
   async learn(text) { return brain.learn(text, `agent:${this.name}`); }
+  async teachNext() { return brain.teachNextCurriculum(); }
+  async consolidate(n = 6) { return brain.consolidate(n); }
   async remember(label, summary = "", detail = "") {
     return brain.upsertNode({
       label: `agent::${this.name}::${label}`,
@@ -38,7 +39,6 @@ export async function runAgent(row) {
   const ctx = new AgentContext(row);
   let status = "ok", output = "";
   try {
-    // eslint-disable-next-line no-new-func
     const AsyncFn = Object.getPrototypeOf(async function () {}).constructor;
     const factory = new AsyncFn("ctx",
       `${row.code}\n;return typeof run === "function" ? run(ctx) : null;`);
@@ -77,14 +77,40 @@ export function startScheduler() {
         runAgent(row).catch(() => {});
       }
     }
-  }, 2000);
+  }, 1500);
 }
 
-const HEARTBEAT_CODE = `// Records that Atlas is alive and grows over time.
+const CURRICULUM_CODE = `// Atlas's autonomous learning engine.
+// Each tick pulls the next code/DB lesson from the curriculum and absorbs it.
+async function run(ctx) {
+  const r = await ctx.teachNext();
+  ctx.log("learned:", r.label, "(", r.idx + 1, "/", r.total, ")");
+  return r.label;
+}
+`;
+
+const REFLECT_CODE = `// Forces Atlas to form a new connection every interval.
+async function run(ctx) {
+  const t = await ctx.think();
+  ctx.log("thought:", t.thought);
+  return t.thought;
+}
+`;
+
+const CONSOLIDATE_CODE = `// Closes triangles in the graph: if A-B and B-C exist,
+// propose a weaker A-C link so related ideas stay reachable.
+async function run(ctx) {
+  const r = await ctx.consolidate(6);
+  ctx.log("consolidation added", r.added, "transitive edges");
+  return r;
+}
+`;
+
+const HEARTBEAT_CODE = `// Records that Atlas is alive and growing.
 async function run(ctx) {
   const s = await ctx.stats();
-  ctx.log("Heartbeat:", s.nodes, "nodes,", s.edges, "edges,",
-          s.thoughts, "thoughts logged.");
+  ctx.log("heartbeat:", s.nodes, "nodes,", s.edges, "edges,",
+          s.thoughts, "thoughts.");
   await ctx.remember("heartbeat",
     \`Atlas alive with \${s.nodes} nodes\`,
     JSON.stringify(s));
@@ -92,30 +118,32 @@ async function run(ctx) {
 }
 `;
 
-const REFLECT_CODE = `// Pushes Atlas to think every interval.
-async function run(ctx) {
-  const t = await ctx.think();
-  ctx.log("Thought:", t.thought);
-  return t.thought;
-}
-`;
-
 export async function installStarterAgents() {
-  const existing = new Set((await brain.allAgents()).map((a) => a.name));
-  if (!existing.has("heartbeat")) {
-    await brain.saveAgent({
-      name: "heartbeat",
-      purpose: "Records that Atlas is alive and logs graph stats.",
-      code: HEARTBEAT_CODE,
-      schedule_seconds: 30,
-    });
-  }
-  if (!existing.has("reflect")) {
-    await brain.saveAgent({
-      name: "reflect",
+  const existing = new Map((await brain.allAgents()).map((a) => [a.name, a]));
+  const wants = [
+    { name: "curriculum",
+      purpose: "Pulls the next code/DB lesson and learns it. Never stops.",
+      code: CURRICULUM_CODE, schedule_seconds: 8 },
+    { name: "reflect",
       purpose: "Forces Atlas to think and form new connections.",
-      code: REFLECT_CODE,
-      schedule_seconds: 20,
-    });
+      code: REFLECT_CODE, schedule_seconds: 12 },
+    { name: "consolidate",
+      purpose: "Closes triangles to make distant ideas reachable.",
+      code: CONSOLIDATE_CODE, schedule_seconds: 45 },
+    { name: "heartbeat",
+      purpose: "Records that Atlas is alive and logs graph stats.",
+      code: HEARTBEAT_CODE, schedule_seconds: 60 },
+  ];
+  for (const w of wants) {
+    const prev = existing.get(w.name);
+    if (!prev) {
+      await brain.saveAgent(w);
+    } else if (prev.code !== w.code
+              || prev.schedule_seconds !== w.schedule_seconds
+              || prev.purpose !== w.purpose) {
+      // Keep starter agents fresh when we ship improvements, but never
+      // touch agents the user has customised by renaming them.
+      await brain.saveAgent({ ...w });
+    }
   }
 }

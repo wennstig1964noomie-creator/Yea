@@ -3,9 +3,11 @@
 // with no API key. The more you teach, the denser the graph and the better
 // the answers get.
 
+import { CURRICULUM } from "./curriculum.js";
+
 const DB_NAME = "atlas";
 const DB_VERSION = 1;
-const EMBED_DIM = 64;
+const EMBED_DIM = 96;
 
 const STOPWORDS = new Set([
   "the","a","an","and","or","but","if","then","else","for","to","of","in",
@@ -13,7 +15,8 @@ const STOPWORDS = new Set([
   "that","these","those","it","its","as","from","into","about","can","could",
   "should","would","will","we","you","your","our","they","their","i","me",
   "my","not","do","does","did","has","have","had","so","than","such","also",
-  "when","what","which","who","how","why","where",
+  "when","what","which","who","how","why","where","tell","me","know","much",
+  "really","very","quite","just","only",
 ]);
 
 const CODE_HINTS = new Set([
@@ -29,18 +32,18 @@ const CODE_HINTS = new Set([
   "pull","push","fork","node","edge","graph","tree","hash","encryption",
   "token","auth","oauth","jwt","rest","graphql","websocket","tcp","udp",
   "dns","proxy","balancer","microservice","monolith","serverless","lambda",
-  "indexeddb","localstorage","react","vue","svelte",
+  "indexeddb","localstorage","react","vue","svelte","fetch","webgl","threejs",
+  "postgres","mysql","mongo","redis","kafka","grpc","ssl","tls",
 ]);
 
 // ---------- tokens / embedding ------------------------------------------
 
-function tokens(text) {
+export function tokens(text) {
   if (!text) return [];
   const raw = String(text).toLowerCase().match(/[a-z_][a-z0-9_+#\-]{1,}/g) || [];
   return raw.filter((t) => !STOPWORDS.has(t) && t.length > 2);
 }
 
-// FNV-1a 32-bit hash — deterministic and fast.
 function hash32(s) {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -61,6 +64,9 @@ export function embed(text) {
     const idx = h % EMBED_DIM;
     const sign = ((h >>> 8) & 1) === 0 ? 1 : -1;
     vec[idx] += sign * (1 + Math.log(c));
+    // bigram hash to keep some structure
+    const idx2 = ((h >>> 16) ^ (h * 2654435761)) % EMBED_DIM;
+    vec[idx2] += sign * 0.4 * (1 + Math.log(c));
   }
   let norm = 0;
   for (let i = 0; i < EMBED_DIM; i++) norm += vec[i] * vec[i];
@@ -81,7 +87,7 @@ export function cosine(a, b) {
   return dot / ((Math.sqrt(na) || 1) * (Math.sqrt(nb) || 1));
 }
 
-export function keywords(text, k = 6) {
+export function keywords(text, k = 8) {
   const toks = tokens(text);
   if (!toks.length) return [];
   const scored = new Map();
@@ -93,13 +99,21 @@ export function keywords(text, k = 6) {
     .map(([w]) => w);
 }
 
-export function summarise(text, max = 220) {
+export function summarise(text, max = 240) {
   const t = String(text || "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   const cut = t.slice(0, max);
   const lastDot = cut.lastIndexOf(".");
   if (lastDot > 60) return cut.slice(0, lastDot + 1);
   return cut.trimEnd() + "...";
+}
+
+function splitSentences(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+(?=[A-Z(])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 // ---------- IndexedDB ----------------------------------------------------
@@ -125,6 +139,7 @@ function openDB() {
       const ag = db.createObjectStore("agents", { keyPath: "id",
         autoIncrement: true });
       ag.createIndex("name", "name", { unique: true });
+      db.createObjectStore("meta", { keyPath: "key" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -147,28 +162,34 @@ async function getAll(store) {
   const t = await tx([store]);
   return wrap(t.objectStore(store).getAll());
 }
-
 async function getOne(store, key) {
   const t = await tx([store]);
   return wrap(t.objectStore(store).get(key));
 }
-
 async function getByIndex(store, index, value) {
   const t = await tx([store]);
   return wrap(t.objectStore(store).index(index).get(value));
 }
-
 async function put(store, value) {
   const t = await tx([store], "readwrite");
   return wrap(t.objectStore(store).put(value));
 }
-
 async function add(store, value) {
   const t = await tx([store], "readwrite");
   return wrap(t.objectStore(store).add(value));
 }
 
-// ---------- public memory API -------------------------------------------
+// ---------- meta key-value (for curriculum cursor, etc) ------------------
+
+export async function metaGet(key) {
+  const row = await getOne("meta", key);
+  return row ? row.value : undefined;
+}
+export async function metaSet(key, value) {
+  await put("meta", { key, value });
+}
+
+// ---------- core memory API ---------------------------------------------
 
 export async function stats() {
   const t = await tx(["nodes", "edges", "chats", "thoughts", "agents"]);
@@ -185,7 +206,6 @@ export async function stats() {
 export async function allNodes() { return getAll("nodes"); }
 export async function allEdges() { return getAll("edges"); }
 export async function getNode(id) { return getOne("nodes", id); }
-
 export async function findNode(label) {
   return getByIndex("nodes", "label", String(label).trim());
 }
@@ -197,8 +217,14 @@ export async function upsertNode(opts) {
   const now = Date.now();
   if (existing) {
     existing.summary = opts.summary || existing.summary || "";
-    existing.detail = opts.detail || existing.detail || "";
-    existing.embedding = opts.embedding || existing.embedding;
+    if (opts.detail) {
+      // accumulate detail rather than overwrite
+      const prev = existing.detail || "";
+      if (!prev.includes(opts.detail)) {
+        existing.detail = (prev ? prev + "\n" : "") + opts.detail;
+      }
+    }
+    if (opts.embedding) existing.embedding = opts.embedding;
     existing.updated_at = now;
     existing.activations = (existing.activations || 1) + 1;
     await put("nodes", existing);
@@ -219,7 +245,7 @@ export async function upsertNode(opts) {
 }
 
 export async function link(srcId, dstId, opts = {}) {
-  if (srcId === dstId) return null;
+  if (srcId === dstId || !srcId || !dstId) return null;
   const relation = opts.relation || "related";
   const weight = opts.weight || 1.0;
   const t = await tx(["edges"], "readwrite");
@@ -235,33 +261,88 @@ export async function link(srcId, dstId, opts = {}) {
   return row;
 }
 
-export async function neighbors(nodeId) {
+// Index of every edge keyed by node, for fast graph traversal.
+async function buildAdjacency() {
   const edges = await allEdges();
-  const ids = new Map(); // otherId -> {relation, weight}
+  const adj = new Map();
   for (const e of edges) {
-    if (e.src === nodeId) ids.set(e.dst, { relation: e.relation,
+    if (!adj.has(e.src)) adj.set(e.src, []);
+    if (!adj.has(e.dst)) adj.set(e.dst, []);
+    adj.get(e.src).push({ other: e.dst, relation: e.relation,
       weight: e.weight });
-    else if (e.dst === nodeId) ids.set(e.src, { relation: e.relation,
+    adj.get(e.dst).push({ other: e.src, relation: e.relation,
       weight: e.weight });
+  }
+  return adj;
+}
+
+export async function neighbors(nodeId) {
+  const adj = await buildAdjacency();
+  const list = adj.get(nodeId) || [];
+  const seen = new Map();
+  for (const n of list) {
+    if (!seen.has(n.other) || seen.get(n.other).weight < n.weight) {
+      seen.set(n.other, n);
+    }
   }
   const out = [];
-  for (const [oid, meta] of ids) {
-    const n = await getNode(oid);
-    if (n) out.push({ ...n, relation: meta.relation, weight: meta.weight });
+  for (const [oid, meta] of seen) {
+    const node = await getNode(oid);
+    if (node) out.push({ ...node, relation: meta.relation,
+      weight: meta.weight });
   }
+  out.sort((a, b) => b.weight - a.weight);
   return out;
 }
 
-export async function searchSimilar(vec, limit = 8) {
+export async function searchSimilar(vec, limit = 8, queryText = "") {
   const nodes = await allNodes();
+  const qTokens = new Set(tokens(queryText));
   const scored = [];
   for (const n of nodes) {
     if (!n.embedding || !n.embedding.length) continue;
-    const s = cosine(vec, n.embedding);
+    let s = cosine(vec, n.embedding);
+    // Label-overlap boost: when a node's label is literally a word in the
+    // question, ranking it above near-by words is almost always correct.
+    if (qTokens.size) {
+      const labelToks = tokens(n.label);
+      let hit = 0;
+      for (const t of labelToks) if (qTokens.has(t)) hit++;
+      if (hit > 0) s += 0.25 + 0.05 * hit;
+    }
+    // Slightly prefer concept nodes over giant document nodes for answers.
+    if (n.kind && !n.kind.startsWith("document")) s += 0.02;
     if (s > 0.05) scored.push([s, n]);
   }
   scored.sort((a, b) => b[0] - a[0]);
-  return scored.slice(0, limit).map(([s, n]) => ({ ...n, score: +s.toFixed(4) }));
+  return scored.slice(0, limit)
+    .map(([s, n]) => ({ ...n, score: +s.toFixed(4) }));
+}
+
+// BFS shortest path between two node ids (undirected).
+export async function shortestPath(srcId, dstId, maxDepth = 6) {
+  if (srcId === dstId) return [srcId];
+  const adj = await buildAdjacency();
+  const prev = new Map([[srcId, null]]);
+  let frontier = [srcId];
+  for (let depth = 0; depth < maxDepth && frontier.length; depth++) {
+    const next = [];
+    for (const cur of frontier) {
+      for (const { other } of (adj.get(cur) || [])) {
+        if (prev.has(other)) continue;
+        prev.set(other, cur);
+        if (other === dstId) {
+          const path = [];
+          let n = other;
+          while (n != null) { path.push(n); n = prev.get(n); }
+          return path.reverse();
+        }
+        next.push(other);
+      }
+    }
+    frontier = next;
+  }
+  return null;
 }
 
 export async function rememberChat(role, content, refs = []) {
@@ -269,28 +350,23 @@ export async function rememberChat(role, content, refs = []) {
   row.id = await add("chats", row);
   return row;
 }
-
 export async function recentChats(limit = 200) {
   const all = await getAll("chats");
   return all.slice(-limit);
 }
-
 export async function recordThought(content, refs = []) {
   const row = { content, created_at: Date.now(), node_refs: refs };
   row.id = await add("thoughts", row);
   return row;
 }
-
 export async function recentThoughts(limit = 30) {
   const all = await getAll("thoughts");
   return all.slice(-limit);
 }
 
 // agents -----------------------------------------------------------------
-
 export async function allAgents() { return getAll("agents"); }
 export async function getAgent(id) { return getOne("agents", id); }
-
 export async function saveAgent({ name, purpose, code,
                                   schedule_seconds = 60 }) {
   name = String(name).trim().replace(/\s+/g, "_");
@@ -310,7 +386,6 @@ export async function saveAgent({ name, purpose, code,
   row.id = await wrap(t.objectStore("agents").add(row));
   return row;
 }
-
 export async function updateAgentRun(id, status, output) {
   const row = await getAgent(id);
   if (!row) return;
@@ -319,13 +394,12 @@ export async function updateAgentRun(id, status, output) {
   row.last_output = String(output || "").slice(0, 8000);
   await put("agents", row);
 }
-
 export async function deleteAgent(id) {
   const t = await tx(["agents"], "readwrite");
   await wrap(t.objectStore("agents").delete(id));
 }
 
-// ---------- learn / think / answer --------------------------------------
+// ---------- learn --------------------------------------------------------
 
 export async function learn(text, source = "user") {
   text = String(text || "").trim();
@@ -333,9 +407,12 @@ export async function learn(text, source = "user") {
 
   const summary = summarise(text);
   const fullVec = embed(text);
-  const kws = keywords(text, 8);
+  const kws = keywords(text, 10);
   const created = [];
 
+  // Each learn() makes a "document" node carrying the raw detail and a set
+  // of concept nodes. Concept nodes are stable across calls so the same
+  // keyword reused over time accumulates activations and detail.
   const parent = await upsertNode({
     label: `doc::${Date.now()}::${kws[0] || "note"}`,
     kind: `document:${source}`,
@@ -343,49 +420,75 @@ export async function learn(text, source = "user") {
   });
   created.push(parent);
 
-  const conceptIds = [];
+  const conceptNodes = [];
   for (const kw of kws) {
     const node = await upsertNode({
       label: kw,
       kind: CODE_HINTS.has(kw) ? "code-concept" : "concept",
       summary: `Concept extracted from learning (${source}).`,
-      embedding: embed(kw),
+      detail: summary,
+      embedding: embed(kw + " " + summary),
     });
-    conceptIds.push(node.id);
+    conceptNodes.push(node);
     await link(parent.id, node.id, { relation: "mentions", weight: 1.2 });
     created.push(node);
   }
 
   let edgeCount = 0;
-  for (let i = 0; i < conceptIds.length; i++) {
-    for (let j = i + 1; j < conceptIds.length; j++) {
-      await link(conceptIds[i], conceptIds[j],
+  // Co-occurrence between every pair of concepts in the same lesson.
+  for (let i = 0; i < conceptNodes.length; i++) {
+    for (let j = i + 1; j < conceptNodes.length; j++) {
+      await link(conceptNodes[i].id, conceptNodes[j].id,
         { relation: "co-occurs", weight: 0.8 });
       edgeCount++;
     }
   }
 
-  const similar = await searchSimilar(fullVec, 5);
-  for (const s of similar) {
-    if (s.id === parent.id) continue;
+  // Bind each concept to the most similar existing concepts (across all
+  // prior lessons) so the graph develops a strong "evokes" backbone --
+  // this is where Atlas's idea-connection power comes from.
+  for (const c of conceptNodes) {
+    const sim = (await searchSimilar(c.embedding, 4))
+      .filter((s) => s.id !== c.id
+        && !s.kind.startsWith("document"));
+    for (const s of sim) {
+      if (s.score < 0.25) continue;
+      await link(c.id, s.id, { relation: "evokes",
+        weight: Math.max(0.4, s.score) });
+      edgeCount++;
+    }
+  }
+
+  // Bind the parent doc to similar existing docs.
+  const docSim = (await searchSimilar(fullVec, 5))
+    .filter((s) => s.id !== parent.id);
+  for (const s of docSim) {
     await link(parent.id, s.id, { relation: "similar",
       weight: Math.max(0.3, s.score) });
     edgeCount++;
   }
 
-  return { summary, nodes: created.map((n) => ({ id: n.id, label: n.label })),
-    edges: edgeCount, keywords: kws };
+  return {
+    summary,
+    nodes: created.map((n) => ({ id: n.id, label: n.label })),
+    edges: edgeCount,
+    keywords: kws,
+  };
 }
 
-function bestMatch(query, nodes) {
-  const q = embed(query);
-  let best = null, bestS = 0;
-  for (const n of nodes) {
-    if (!n.embedding) continue;
-    const s = cosine(q, n.embedding);
-    if (s > bestS) { bestS = s; best = n; }
+// ---------- think + consolidate -----------------------------------------
+
+function pickWeighted(nodes, weightFn) {
+  if (!nodes.length) return null;
+  let total = 0;
+  const weights = nodes.map((n) => Math.max(0.0001, weightFn(n)));
+  for (const w of weights) total += w;
+  let r = Math.random() * total;
+  for (let i = 0; i < nodes.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return nodes[i];
   }
-  return best;
+  return nodes[nodes.length - 1];
 }
 
 export async function think(focus) {
@@ -396,73 +499,340 @@ export async function think(focus) {
   }
   let start = null;
   if (focus) {
-    start = await findNode(focus) || bestMatch(focus, nodes);
+    start = await findNode(focus);
+    if (!start) {
+      const sims = await searchSimilar(embed(focus), 3);
+      start = sims[0] || null;
+    }
   }
   if (!start) {
-    nodes.sort((a, b) =>
-      (b.activations || 0) - (a.activations || 0) ||
-      (b.updated_at || 0) - (a.updated_at || 0));
-    const top = nodes.slice(0, Math.max(5, nodes.length >> 2));
-    start = top[Math.floor(Math.random() * top.length)];
+    // Pick by a blend of recency and activations -- highly-used and freshly-
+    // touched nodes are most likely to be productive starting points.
+    const recent = nodes.filter((n) =>
+      Date.now() - (n.updated_at || 0) < 1000 * 60 * 60 * 24 * 14);
+    const pool = recent.length > 8 ? recent : nodes;
+    start = pickWeighted(pool, (n) =>
+      Math.log(1 + (n.activations || 1)) + Math.random() * 0.4);
   }
-  const neigh = await neighbors(start.id);
+
+  const adj = await buildAdjacency();
+  const startNeigh = adj.get(start.id) || [];
+
+  const mode = Math.random();
   let thought, refs;
-  if (neigh.length) {
-    const partner = neigh[Math.floor(Math.random() * neigh.length)];
-    await link(start.id, partner.id, { relation: "inferred", weight: 0.6 });
+
+  if (mode < 0.55 && startNeigh.length) {
+    // Multi-hop inference: find a 2-hop node that shares >=2 neighbors with
+    // start but isn't already linked. Linking them is a real new idea.
+    const oneHop = new Map();
+    for (const e of startNeigh) oneHop.set(e.other, e);
+    const candidates = new Map(); // id -> overlap count
+    for (const e of startNeigh) {
+      for (const e2 of (adj.get(e.other) || [])) {
+        if (e2.other === start.id || oneHop.has(e2.other)) continue;
+        candidates.set(e2.other, (candidates.get(e2.other) || 0) + 1);
+      }
+    }
+    let best = null, bestScore = 0;
+    for (const [oid, c] of candidates) {
+      if (c > bestScore) { bestScore = c; best = oid; }
+    }
+    if (best && bestScore >= 1) {
+      const partner = await getNode(best);
+      await link(start.id, partner.id, { relation: "inferred",
+        weight: 0.5 + bestScore * 0.2 });
+      thought = `Atlas inferred '${start.label}' and '${partner.label}' are related — ` +
+        `they share ${bestScore} common connections, so they likely belong ` +
+        `to the same area.`;
+      refs = [start.id, partner.id];
+    }
+  }
+
+  if (!thought && mode < 0.85 && startNeigh.length) {
+    // Reinforce: pick a neighbor and explain why it relates.
+    const e = startNeigh[Math.floor(Math.random() * startNeigh.length)];
+    const partner = await getNode(e.other);
+    await link(start.id, partner.id, { relation: "inferred", weight: 0.4 });
     thought = `Atlas connects '${start.label}' with '${partner.label}' ` +
-      `(${partner.relation || "related"}). They likely share structure ` +
-      "because they keep appearing together.";
+      `(${e.relation}). They keep co-occurring so the bond strengthens.`;
     refs = [start.id, partner.id];
-  } else {
-    const sim = (await searchSimilar(start.embedding || embed(start.label), 3))
+  }
+
+  if (!thought) {
+    // Similarity-based jump for sparsely connected nodes.
+    const sim = (await searchSimilar(start.embedding || embed(start.label), 5))
       .filter((s) => s.id !== start.id);
     if (sim.length) {
       const partner = sim[0];
-      await link(start.id, partner.id, { relation: "inferred", weight: 0.4 });
-      thought = `Atlas suspects '${start.label}' and '${partner.label}' are ` +
-        `related (similarity ${partner.score}).`;
+      await link(start.id, partner.id, { relation: "evokes",
+        weight: Math.max(0.3, partner.score) });
+      thought = `Atlas suspects '${start.label}' relates to '${partner.label}' ` +
+        `by similarity (${partner.score}).`;
       refs = [start.id, partner.id];
     } else {
-      thought = `Atlas is reflecting on '${start.label}' but has not yet ` +
-        "found anything to link it to. More learning needed.";
+      thought = `Atlas is reflecting on '${start.label}' but has nothing ` +
+        `nearby to link it to yet.`;
       refs = [start.id];
     }
   }
+
   await recordThought(thought, refs);
   return { thought, node_refs: refs };
+}
+
+// Find triangles (A-B, B-C) where A-C is missing and create a weaker
+// inferred A-C link. Caps the number of edges added per pass to avoid
+// runaway growth.
+export async function consolidate(maxNew = 8) {
+  const adj = await buildAdjacency();
+  const ids = [...adj.keys()];
+  if (ids.length < 3) return { added: 0 };
+
+  // Precompute neighbor sets and edge weights.
+  const nbrSet = new Map();
+  const wMap = new Map();
+  for (const [id, list] of adj) {
+    const s = new Set();
+    for (const e of list) {
+      s.add(e.other);
+      wMap.set(`${id}->${e.other}`, e.weight);
+    }
+    nbrSet.set(id, s);
+  }
+
+  // Pick a random subset of nodes to consider each pass so we keep it cheap.
+  const sample = [...ids].sort(() => Math.random() - 0.5)
+    .slice(0, Math.min(50, ids.length));
+
+  const proposals = [];
+  for (const b of sample) {
+    const neigh = [...(nbrSet.get(b) || [])];
+    for (let i = 0; i < neigh.length; i++) {
+      for (let j = i + 1; j < neigh.length; j++) {
+        const a = neigh[i], c = neigh[j];
+        if (a === c) continue;
+        if ((nbrSet.get(a) || new Set()).has(c)) continue;
+        const wab = wMap.get(`${a}->${b}`) || wMap.get(`${b}->${a}`) || 0.5;
+        const wbc = wMap.get(`${b}->${c}`) || wMap.get(`${c}->${b}`) || 0.5;
+        proposals.push([a, c, Math.min(wab, wbc) * 0.4]);
+      }
+    }
+  }
+  proposals.sort((x, y) => y[2] - x[2]);
+  let added = 0;
+  for (const [a, c, w] of proposals) {
+    if (added >= maxNew) break;
+    await link(a, c, { relation: "inferred", weight: w });
+    added++;
+  }
+  if (added) {
+    await recordThought(`Consolidation pass added ${added} transitive ` +
+      `connections by closing triangles in the graph.`);
+  }
+  return { added };
+}
+
+// ---------- answer (multi-hop, intent-aware composition) ----------------
+
+function classifyIntent(q) {
+  const s = q.toLowerCase();
+  if (/^(how do|how to|how can|how should)/.test(s)) return "how";
+  if (/^why/.test(s)) return "why";
+  if (/connect|relate|relationship|link|between/.test(s)
+      && /(.+)\s+(and|with|to)\s+(.+)/.test(s)) return "connect";
+  if (/(difference|vs\.?|versus|compare)/.test(s)) return "compare";
+  if (/^(list|name|give me|show me)/.test(s)) return "list";
+  if (/^(what|tell|explain|describe|define|who)/.test(s)) return "what";
+  return "what";
+}
+
+function extractEntities(q) {
+  // Try to pull two entities from "X and Y" / "X vs Y" / "between X and Y".
+  const s = q.toLowerCase();
+  let m = s.match(/(?:between|connect|relate|relation(?:ship)?)\s+(.+?)\s+(?:and|with|to)\s+(.+?)[?.!]?$/);
+  if (m) return [m[1].trim(), m[2].trim()];
+  m = s.match(/(.+?)\s+(?:vs\.?|versus)\s+(.+?)[?.!]?$/);
+  if (m) return [m[1].trim(), m[2].trim()];
+  m = s.match(/difference\s+between\s+(.+?)\s+and\s+(.+?)[?.!]?$/);
+  if (m) return [m[1].trim(), m[2].trim()];
+  return null;
+}
+
+async function describeNode(node) {
+  // Pull one tight sentence summarising what we know about a node, blending
+  // the stored summary with the first sentence of its accumulated detail.
+  const pieces = [];
+  if (node.summary && !node.summary.startsWith("Concept extracted")) {
+    pieces.push(node.summary);
+  }
+  if (node.detail) {
+    const first = splitSentences(node.detail)[0];
+    if (first && !pieces.some((p) => p.includes(first))) pieces.push(first);
+  }
+  return pieces.join(" ");
 }
 
 export async function answer(question) {
   const q = String(question || "").trim();
   if (!q) return { reply: "Ask me anything.", refs: [] };
+
+  const intent = classifyIntent(q);
+  const ents = extractEntities(q);
+
+  // CONNECT mode: find shortest path between two entities.
+  if (intent === "connect" && ents) {
+    const a = (await findNode(ents[0])) ||
+      (await searchSimilar(embed(ents[0]), 1))[0];
+    const b = (await findNode(ents[1])) ||
+      (await searchSimilar(embed(ents[1]), 1))[0];
+    if (a && b) {
+      const path = await shortestPath(a.id, b.id, 6);
+      if (path && path.length) {
+        const labels = await Promise.all(path.map(async (id) =>
+          (await getNode(id))?.label || `#${id}`));
+        const reply = `Atlas connects them via: ${labels.join(" → ")}. ` +
+          `Each hop is an edge it has learned over time.`;
+        return { reply, refs: path };
+      }
+      return { reply: `I know '${a.label}' and '${b.label}' but haven't ` +
+        `linked them yet. Teach me more about either and I'll connect them.`,
+        refs: [a.id, b.id] };
+    }
+  }
+
   const qv = embed(q);
-  const matches = await searchSimilar(qv, 5);
-  if (!matches.length) {
+  let matches = await searchSimilar(qv, 8, q);
+
+  // Topic-aware direct lookup. Pull a candidate noun from the question and
+  // try every plausible node label for it, including the head word alone
+  // (e.g. "list things about sql" -> try "sql"). Promote the first hit.
+  const cleaned = q.toLowerCase()
+    .replace(/^(what (is|are) (a |an |the )?|how (do|to|can|should) (i |you )?|tell me about |tell me |explain |describe |define |list (me )?(of |things (related |about )?(to |of )?)?|give me|show me|name )/, "")
+    .replace(/[?.!]+$/, "")
+    .replace(/\s+(in|with|for|about|of)\s+(python|javascript|js|sql|rust|go)$/, "")
+    .trim();
+  const headTokens = tokens(cleaned).filter((t) => !STOPWORDS.has(t));
+  const candidates = new Set();
+  if (cleaned) {
+    candidates.add(cleaned);
+    candidates.add(cleaned.replace(/s$/, ""));
+    candidates.add(cleaned + "s");
+  }
+  for (const tok of headTokens) {
+    candidates.add(tok);
+    candidates.add(tok.replace(/s$/, ""));
+    candidates.add(tok + "s");
+  }
+  for (const c of candidates) {
+    if (!c) continue;
+    const direct = await findNode(c);
+    if (direct) {
+      matches = [{ ...direct, score: 1.0 },
+        ...matches.filter((m) => m.id !== direct.id)];
+      break;
+    }
+  }
+
+  // Honest "I don't know" path. Trigger if there are no matches, the top
+  // score is weak, or no top match shares any token with the question.
+  const qToks = new Set(tokens(q));
+  const topShares = matches.length
+    ? tokens(matches[0].label).some((t) => qToks.has(t))
+    : false;
+  if (!matches.length
+      || matches[0].score < 0.25
+      || (!topShares && matches[0].score < 0.45)) {
     await learn(q, "question");
     return {
-      reply: "I don't have anything connected to that yet, but I just stored " +
-        "the question so I can grow toward it. Try teaching me something " +
-        "related.",
-      refs: [],
+      reply: "I don't have anything strongly connected to that yet, but I " +
+        "just stored the question as a seed and my curriculum agent will " +
+        "keep filling in. Use the Teach tab to give me material about it " +
+        "and I'll grow toward it.",
+      refs: matches.slice(0, 3).map((m) => m.id),
     };
   }
+
+  // Drop document-style nodes when a real concept matched well.
+  const concepts = matches.filter((m) => !m.kind.startsWith("document"));
+  if (concepts.length && concepts[0].score > 0.2) matches = concepts;
+
   const top = matches[0];
-  const related = (await neighbors(top.id)).slice(0, 6);
-  const parts = [`Based on what I know about '${top.label}':`];
-  if (top.summary) parts.push(top.summary);
-  if (related.length) {
-    parts.push("It connects to " + related.map((r) => r.label).join(", ") +
-      ".");
-  } else parts.push("I haven't linked this to anything else yet.");
-  const others = matches.slice(1).map((m) => m.label);
-  if (others.length) {
-    parts.push("Other relevant memories: " + others.join(", ") + ".");
+  const topDesc = await describeNode(top);
+  const adj = await buildAdjacency();
+  const neighIds = [...new Set((adj.get(top.id) || [])
+    .sort((x, y) => y.weight - x.weight)
+    .slice(0, 8).map((e) => e.other))];
+  const neighNodes = (await Promise.all(neighIds.map((id) => getNode(id))))
+    .filter(Boolean);
+
+  // Pull two interesting connected facts.
+  const facts = [];
+  for (const n of neighNodes) {
+    if (n.kind.startsWith("document")) continue;
+    const d = await describeNode(n);
+    if (d && !facts.some((f) => f.text === d)) facts.push({ node: n, text: d });
+    if (facts.length >= 3) break;
   }
-  return {
-    reply: parts.join(" "),
-    refs: [top.id, ...related.map((r) => r.id)],
-  };
+  if (facts.length < 2) {
+    for (const n of neighNodes) {
+      const d = await describeNode(n);
+      if (d && !facts.some((f) => f.text === d)) facts.push({ node: n, text: d });
+      if (facts.length >= 3) break;
+    }
+  }
+
+  const otherMatches = matches.slice(1, 4).map((m) => m.label);
+
+  const refs = [top.id, ...facts.map((f) => f.node.id)];
+  const parts = [];
+
+  // Lead with intent-appropriate framing.
+  if (intent === "what") {
+    parts.push(`'${top.label}': ${topDesc || "I have this concept but no full summary yet."}`);
+  } else if (intent === "how") {
+    parts.push(`Here's what I know about doing this. '${top.label}': ${topDesc}`);
+  } else if (intent === "why") {
+    parts.push(`The reason traces back to '${top.label}'. ${topDesc}`);
+  } else if (intent === "compare" && ents) {
+    parts.push(`Comparing '${ents[0]}' and '${ents[1]}', the closest match I have is '${top.label}'. ${topDesc}`);
+  } else if (intent === "list") {
+    parts.push(`Top related concepts to '${top.label}':`);
+  } else {
+    parts.push(`'${top.label}': ${topDesc}`);
+  }
+
+  // Weave in connected facts as real prose.
+  if (facts.length) {
+    if (intent === "list") {
+      parts.push(facts.map((f) => `• ${f.node.label} — ${f.text}`).join("\n"));
+    } else {
+      const f0 = facts[0];
+      parts.push(`This connects to '${f0.node.label}': ${f0.text}`);
+      if (facts[1]) {
+        parts.push(`It also relates to '${facts[1].node.label}': ${facts[1].text}`);
+      }
+    }
+  } else {
+    parts.push("I haven't built strong connections from this yet -- " +
+      "the more lessons I absorb, the richer this answer gets.");
+  }
+
+  if (otherMatches.length) {
+    parts.push(`Other relevant memories: ${otherMatches.join(", ")}.`);
+  }
+
+  // Reinforce activations on everything we used so future thoughts gravitate
+  // toward this region of the graph.
+  for (const id of refs) {
+    const n = await getNode(id);
+    if (n) {
+      n.activations = (n.activations || 1) + 1;
+      n.updated_at = Date.now();
+      await put("nodes", n);
+    }
+  }
+
+  return { reply: parts.join("\n\n"), refs };
 }
 
 // ---------- graph snapshot for the 3D view ------------------------------
@@ -478,7 +848,7 @@ export async function graphSnapshot() {
     const y = 1 - (i / Math.max(n - 1, 1)) * 2;
     const radius = Math.sqrt(Math.max(0, 1 - y * y));
     const theta = golden * i;
-    const scale = 30 + Math.log((node.activations || 1) + 1) * 8;
+    const scale = 30 + Math.log((node.activations || 1) + 1) * 10;
     out.push({
       id: node.id, label: node.label, kind: node.kind, summary: node.summary,
       activations: node.activations || 1,
@@ -494,39 +864,60 @@ export async function graphSnapshot() {
   };
 }
 
-// ---------- seed lessons -------------------------------------------------
+// ---------- continuous curriculum ---------------------------------------
 
-const SEED = [
-  ["python-basics", "Python is an interpreted high-level language. Code is organized into modules, packages, and functions. Variables are dynamically typed. Common data structures include list, dict, set, tuple."],
-  ["sql-fundamentals", "SQL queries a relational database using SELECT, INSERT, UPDATE, DELETE. Tables have rows and columns. Indexes speed up lookups. JOIN combines rows from multiple tables using shared keys."],
-  ["rest-apis", "A REST API exposes resources over HTTP. Verbs GET, POST, PUT, DELETE map to read, create, update, delete. JSON is the typical payload. Endpoints are URLs that identify resources."],
-  ["databases", "Databases store structured data. Relational databases like Postgres and SQLite use tables and SQL. Document databases like MongoDB store JSON. Key-value stores like Redis cache data in memory for fast access."],
-  ["indexeddb", "IndexedDB is the browser's local database. It stores structured records in object stores indexed by keys. Reads and writes happen inside transactions."],
-  ["git", "Git tracks code in commits on branches. Developers clone a repository, create a branch, commit changes, and push to a remote. Pull requests merge a branch back into main after review."],
-  ["data-structures", "Arrays, linked lists, hash maps, trees, and graphs are core data structures. Hash maps give O(1) average lookup. Trees and graphs model hierarchical and networked relationships."],
-  ["async-programming", "Async programming runs many tasks without blocking. JavaScript uses Promises and async functions. The event loop schedules pending work."],
-  ["websockets", "WebSockets give full-duplex communication over a single TCP connection, ideal for live UIs, chat, dashboards, and streaming updates from a server."],
-  ["graph-theory", "A graph is a set of nodes connected by edges. Edges can be directed or weighted. Traversals include breadth-first and depth-first search. Graphs model knowledge, networks, dependencies."],
-  ["software-architecture", "Software architecture organizes a system into components. Monoliths keep everything in one process; microservices split it into many. Layered, hexagonal, and event-driven are common patterns."],
-  ["testing", "Tests verify code behaves correctly. Unit tests check small pieces, integration tests check pieces working together, end-to-end tests exercise the whole system. CI runs tests on every commit."],
-  ["vector-embeddings", "Embeddings map text or other data to vectors so similarity becomes cosine distance. Vector databases like FAISS, pgvector, and Chroma search nearest neighbors at scale."],
-  ["knowledge-graphs", "A knowledge graph stores entities as nodes and relationships as edges. Queries traverse paths to answer questions. Triples in subject-predicate-object form are a common encoding."],
-  ["agents", "An autonomous agent perceives state, plans, and acts in a loop. Multi-agent systems coordinate specialised agents that share memory and goals. Tools let agents reach beyond their own code."],
-  ["docker", "Docker packages an application with its dependencies into an image. Containers run images in isolated environments. Compose orchestrates multi-container apps; Kubernetes scales them across machines."],
-  ["javascript", "JavaScript runs in browsers and Node.js. It uses prototype-based objects, first-class functions, closures, async/await, and a single-threaded event loop."],
-  ["threejs", "Three.js is a JavaScript library that renders 3D graphics in the browser using WebGL. Scenes contain meshes, lights, and a camera; the renderer draws them every frame."],
-];
+const SEED_LIMIT = 18; // how many lessons to seed before async loop kicks in
+const CURRICULUM_KEY = "curriculum_cursor";
 
 export async function seedIfEmpty() {
   const s = await stats();
   if (s.nodes > 0) return false;
-  for (const [label, text] of SEED) {
-    await learn(text, `seed:${label}`);
+  for (let i = 0; i < Math.min(SEED_LIMIT, CURRICULUM.length); i++) {
+    await learn(CURRICULUM[i][1], `seed:${CURRICULUM[i][0]}`);
   }
+  await metaSet(CURRICULUM_KEY, Math.min(SEED_LIMIT, CURRICULUM.length));
   return true;
 }
 
+// Pull the next curriculum lesson Atlas hasn't seen yet. Once it has seen
+// them all, it cycles back through them so older lessons keep reinforcing.
+export async function teachNextCurriculum() {
+  const cursor = (await metaGet(CURRICULUM_KEY)) || 0;
+  const idx = cursor % CURRICULUM.length;
+  const [label, text] = CURRICULUM[idx];
+  await learn(text, `curriculum:${label}`);
+  await metaSet(CURRICULUM_KEY, cursor + 1);
+  return { label, idx, total: CURRICULUM.length };
+}
+
 export async function wipe() {
+  const db = await openDB();
+  await new Promise((res, rej) => {
+    const t = db.transaction(
+      ["nodes","edges","chats","thoughts","agents","meta"], "readwrite");
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+    for (const s of ["nodes","edges","chats","thoughts","agents","meta"]) {
+      t.objectStore(s).clear();
+    }
+  });
+}
+
+// ---------- export / import (full memory backup) ------------------------
+
+export async function exportAll() {
+  const [nodes, edges, chats, thoughts, agents] = await Promise.all([
+    allNodes(), allEdges(), getAll("chats"), getAll("thoughts"),
+    allAgents(),
+  ]);
+  return {
+    version: 1,
+    exported_at: Date.now(),
+    nodes, edges, chats, thoughts, agents,
+  };
+}
+
+export async function importAll(blob) {
+  if (!blob || typeof blob !== "object") throw new Error("invalid backup");
   const db = await openDB();
   await new Promise((res, rej) => {
     const t = db.transaction(
@@ -535,5 +926,10 @@ export async function wipe() {
     for (const s of ["nodes","edges","chats","thoughts","agents"]) {
       t.objectStore(s).clear();
     }
+    for (const n of blob.nodes  || []) t.objectStore("nodes").put(n);
+    for (const e of blob.edges  || []) t.objectStore("edges").put(e);
+    for (const c of blob.chats  || []) t.objectStore("chats").put(c);
+    for (const x of blob.thoughts || []) t.objectStore("thoughts").put(x);
+    for (const a of blob.agents || []) t.objectStore("agents").put(a);
   });
 }

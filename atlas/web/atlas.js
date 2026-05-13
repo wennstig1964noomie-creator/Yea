@@ -342,6 +342,52 @@ document.getElementById("think-btn").addEventListener("click", async () => {
   refreshGraph();
 });
 
+document.getElementById("consolidate-btn").addEventListener("click",
+  async () => {
+    const r = await brain.consolidate(12);
+    teachResult.textContent =
+      `Consolidation added ${r.added} transitive connections.`;
+    refreshGraph();
+  });
+
+document.getElementById("export-btn").addEventListener("click", async () => {
+  const blob = await brain.exportAll();
+  const data = new Blob([JSON.stringify(blob, null, 2)],
+    { type: "application/json" });
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  a.href = url;
+  a.download = `atlas-backup-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  teachResult.textContent =
+    `Backed up ${blob.nodes.length} nodes, ${blob.edges.length} edges, ` +
+    `${blob.chats.length} chats, ${blob.thoughts.length} thoughts.`;
+});
+
+document.getElementById("import-file").addEventListener("change",
+  async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    if (!confirm("Restoring will replace Atlas's current memory. Continue?")) {
+      ev.target.value = "";
+      return;
+    }
+    try {
+      const text = await f.text();
+      const blob = JSON.parse(text);
+      await brain.importAll(blob);
+      teachResult.textContent =
+        `Restored ${(blob.nodes || []).length} nodes from ${f.name}.`;
+      location.reload();
+    } catch (err) {
+      teachResult.textContent = "Restore failed: " + err.message;
+    }
+  });
+
 document.getElementById("reset-btn").addEventListener("click", async () => {
   if (!confirm("Wipe Atlas's brain entirely? This deletes all nodes, edges, "
              + "chats, thoughts, and agents.")) return;
@@ -433,7 +479,9 @@ async function refreshGraph() {
   await refreshStats();
 }
 
-// autonomous learning loop: Atlas keeps thinking on its own
+// Autonomous tick. Agents already cover curriculum/reflect/consolidate, so
+// the page-level loop just nudges Atlas to keep thinking even when the
+// scheduler hasn't fired yet.
 async function autonomousTick() {
   try { await brain.think(); } catch {}
 }
@@ -449,18 +497,20 @@ async function autonomousTick() {
   if (seeded) {
     appendMsg("atlas",
       "Hi, I'm Atlas. I just seeded myself with foundational code and " +
-      "database knowledge. Ask me something, or use the Teach tab to " +
-      "feed me more. Everything you teach lives in your browser " +
-      "(IndexedDB) -- I never forget across sessions.");
+      "database knowledge, and I'll keep teaching myself more from a " +
+      "built-in curriculum forever. Ask me something, or use the Teach " +
+      "tab to feed me more. Everything you teach lives in your browser " +
+      "(IndexedDB) — I never forget across sessions, and you can " +
+      "download a backup any time from the Teach tab.");
   } else {
     appendMsg("atlas",
-      "Welcome back. I remembered everything from last time. " +
-      "Ask me anything.");
+      "Welcome back. I remembered everything from last time and I'm " +
+      "still learning. Ask me anything.");
   }
 
-  setInterval(refreshStats, 2000);
-  setInterval(renderThoughts, 4000);
-  setInterval(renderAgents, 5000);
-  setInterval(refreshGraph, 8000);
-  setInterval(autonomousTick, 6000);
+  setInterval(refreshStats, 1500);
+  setInterval(renderThoughts, 3000);
+  setInterval(renderAgents, 4000);
+  setInterval(refreshGraph, 6000);
+  setInterval(autonomousTick, 5000);
 })();

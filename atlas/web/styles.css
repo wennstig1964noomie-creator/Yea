@@ -308,3 +308,20 @@ button.danger {
 }
 button.danger:hover { background: linear-gradient(120deg, #8e244c, #cc366f); }
 
+
+.filebtn {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(120deg, #1a3a6e, #2b5fae);
+  color: #d8e3ff;
+  border: 1px solid rgba(125, 249, 255, 0.35);
+  padding: 9px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.filebtn:hover { background: linear-gradient(120deg, #244c8e, #3672cc); }
+.filebtn input { display: none; }
+
+.msg.atlas { white-space: pre-wrap; }
+.msg.atlas + .msg.atlas { margin-top: 0; }
