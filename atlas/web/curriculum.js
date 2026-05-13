@@ -1,0 +1,166 @@
+// Atlas's continuous curriculum. The autonomous loop pulls one lesson at a
+// time so the graph never stops growing. Lessons are intentionally short and
+// concept-dense so each one creates many new connections.
+
+export const CURRICULUM = [
+  ["python-basics", "Python is an interpreted high-level language. Code is organized into modules, packages, and functions. Variables are dynamically typed. Common built-in types include list, dict, set, tuple, str, int, float, bool."],
+  ["python-decorators", "A Python decorator is a function that wraps another function. It is applied with the @decorator syntax. Decorators are useful for logging, timing, caching, authentication, and registration."],
+  ["python-context-managers", "A context manager controls setup and teardown for a block of code. The with statement enters and exits the context. Files, locks, and database connections are typical examples. __enter__ and __exit__ define the protocol."],
+  ["python-generators", "A Python generator yields values lazily one at a time. The yield keyword pauses execution and resumes on the next iteration. Generators save memory because they never build the whole sequence in advance."],
+  ["python-asyncio", "Python asyncio runs many tasks on one thread using an event loop. Coroutines defined with async def are awaited with await. asyncio.gather runs coroutines concurrently."],
+  ["python-typing", "Python supports optional type hints. Common annotations include list[int], dict[str, str], Optional[X], Union[X, Y], and Callable[..., X]. Tools like mypy and pyright check types statically."],
+  ["python-dataclasses", "A Python dataclass auto-generates __init__, __repr__, and __eq__. Use the @dataclass decorator from dataclasses. Frozen dataclasses are immutable. Default values use field(default_factory=...) for mutables."],
+  ["python-itertools", "itertools provides building blocks for iteration: chain, zip_longest, product, permutations, combinations, groupby, islice, count, cycle. Each returns a lazy iterator."],
+  ["python-collections", "collections offers OrderedDict, defaultdict, Counter, deque, namedtuple. defaultdict auto-creates missing keys; Counter tallies occurrences; deque is a fast double-ended queue."],
+  ["python-virtualenv", "A virtualenv isolates a Python project's dependencies in a local folder. Create with python -m venv .venv and activate with source .venv/bin/activate. pip install adds packages only inside the env."],
+  ["python-pip", "pip installs Python packages from PyPI. pip install package, pip install -r requirements.txt, pip freeze > requirements.txt. Use pip-tools or poetry to pin transitive versions."],
+  ["python-pytest", "pytest is the popular Python test runner. Test functions start with test_. Fixtures provide reusable setup. Parametrize generates many test cases from one function. pytest -k filters by name."],
+
+  ["javascript-basics", "JavaScript runs in browsers and Node.js. Variables are declared with let, const, or var. Functions are first-class. The language is dynamically typed and single-threaded with an event loop."],
+  ["javascript-promises", "A Promise represents a future value. .then chains transformations, .catch handles errors, .finally always runs. async functions implicitly return Promises and use await to pause for them."],
+  ["javascript-closures", "A closure is a function that captures variables from the scope where it was defined. Closures power module patterns, event handlers, partial application, and memoization."],
+  ["javascript-event-loop", "The event loop dispatches macrotasks (setTimeout, I/O) and microtasks (Promise callbacks) onto the call stack. Microtasks always drain before the next macrotask. Long synchronous work blocks rendering."],
+  ["javascript-destructuring", "Destructuring extracts properties or array elements into variables. const {x, y} = obj or const [a, b] = arr. Rename with {x: x2} and provide defaults with {x = 1}."],
+  ["javascript-modules", "ES modules use import and export. Each file has its own scope. Named exports and a single default export coexist. Dynamic import() returns a Promise."],
+  ["javascript-iterators", "An iterable implements Symbol.iterator returning an iterator with next(). Generators (function*) are iterables that yield values. for...of consumes them."],
+  ["javascript-prototypes", "Every JavaScript object has a prototype it inherits from. Method lookup walks the prototype chain. class is syntactic sugar over prototypes."],
+  ["javascript-this", "this in JavaScript depends on how a function is called. Arrow functions capture this lexically. bind, call, and apply set this explicitly."],
+  ["javascript-fetch", "fetch issues HTTP requests. fetch(url).then(r => r.json()) parses JSON. Pass {method, headers, body} for POSTs. AbortController cancels in-flight requests."],
+  ["javascript-array-methods", "Array methods: map transforms, filter keeps matches, reduce accumulates, forEach iterates, find returns the first match, some/every test conditions, flat flattens nested arrays."],
+
+  ["typescript-basics", "TypeScript adds static types to JavaScript. tsc transpiles .ts to .js. Types include primitives, unions, intersections, generics, and discriminated unions. The compiler runs structural type checks."],
+  ["typescript-generics", "Generics let a function or class be parameterized over a type. function id<T>(x: T): T returns whatever you pass in. Constraints use extends; defaults use ="],
+  ["typescript-utility-types", "Useful utility types: Partial<T>, Required<T>, Readonly<T>, Pick<T, K>, Omit<T, K>, Record<K, V>, Exclude<T, U>, ReturnType<F>, Awaited<T>."],
+
+  ["rust-ownership", "Rust enforces memory safety with ownership. Each value has one owner; references are borrowed mutably or immutably. The borrow checker rejects data races at compile time."],
+  ["rust-lifetimes", "Lifetimes annotate how long a reference is valid. Functions taking references often need 'a lifetime parameters. Most lifetimes are inferred via elision rules."],
+  ["rust-traits", "A trait defines shared behavior. Types implement traits with impl Trait for Type. Generic functions take T: Trait. dyn Trait erases the type for dynamic dispatch."],
+  ["rust-enums", "Rust enums hold data per variant. Option<T> is Some or None; Result<T,E> is Ok or Err. Pattern matching is exhaustive."],
+  ["go-basics", "Go is a compiled, statically typed language with goroutines and channels for concurrency. The toolchain (go build, go test, go mod) is built in."],
+  ["go-channels", "A Go channel passes values between goroutines. Unbuffered channels synchronize; buffered ones queue up to N values. select multiplexes channel operations."],
+
+  ["sql-fundamentals", "SQL queries a relational database. SELECT retrieves, INSERT creates, UPDATE modifies, DELETE removes. Tables have rows and columns. Constraints include PRIMARY KEY, UNIQUE, NOT NULL, FOREIGN KEY."],
+  ["sql-joins", "A JOIN combines rows from two tables on a matching key. INNER JOIN keeps matches only. LEFT JOIN keeps all left rows. FULL OUTER JOIN keeps all. CROSS JOIN is the cartesian product."],
+  ["sql-indexes", "An index speeds up lookups by maintaining a sorted structure on one or more columns. B-tree is the default. Indexes slow writes and use disk. EXPLAIN reveals query plans."],
+  ["sql-transactions", "A transaction groups statements into an atomic unit. BEGIN, COMMIT, ROLLBACK. Isolation levels (read uncommitted, read committed, repeatable read, serializable) trade consistency for concurrency."],
+  ["sql-normalization", "Normalization removes redundancy from a schema. 1NF requires atomic columns. 2NF removes partial dependencies. 3NF removes transitive dependencies. Denormalization is a deliberate reverse for read performance."],
+  ["sql-window-functions", "Window functions compute values over a row set without collapsing it. ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, SUM OVER (PARTITION BY ...). Useful for running totals and ranking."],
+  ["sql-cte", "A common table expression (CTE) is a named subquery written with WITH. Recursive CTEs traverse hierarchies. CTEs improve readability without temp tables."],
+
+  ["postgres", "PostgreSQL is an open-source relational database with rich features: JSONB, arrays, GIN and GiST indexes, materialized views, listen/notify, partitioning, and PL/pgSQL."],
+  ["mysql", "MySQL is a widely used relational database. Storage engines include InnoDB (transactional, default) and MyISAM. UTF8MB4 is the modern character set."],
+  ["sqlite", "SQLite is an embedded, file-based relational database. It runs in-process with no server. WAL mode improves concurrency. Useful for apps, mobile, and prototypes."],
+  ["mongodb", "MongoDB is a document database storing JSON-like BSON. Collections hold documents. Queries use a JSON-shaped filter. Indexes work on fields including arrays."],
+  ["redis", "Redis is an in-memory key-value store supporting strings, lists, sets, sorted sets, hashes, streams, and pub/sub. AOF and RDB persistence are optional."],
+  ["dynamodb", "DynamoDB is AWS's serverless key-value/document store. Tables have partition and sort keys. Capacity is provisioned or on-demand. Global secondary indexes enable alternate access patterns."],
+  ["elasticsearch", "Elasticsearch is a distributed search engine built on Lucene. Documents live in indexes and are queried with a JSON DSL. Inverted indexes power full-text search."],
+  ["vector-databases", "Vector databases (pgvector, Pinecone, Chroma, Weaviate, FAISS) index high-dimensional vectors and answer nearest-neighbor queries. ANN algorithms include HNSW, IVF, PQ."],
+
+  ["rest-apis", "A REST API exposes resources over HTTP. GET reads, POST creates, PUT replaces, PATCH partially updates, DELETE removes. Status codes 2xx success, 4xx client error, 5xx server error."],
+  ["graphql", "GraphQL exposes a typed schema with queries, mutations, and subscriptions. Clients ask for exactly the fields they need. Resolvers fetch each field. N+1 queries are mitigated with DataLoader."],
+  ["grpc", "gRPC is a high-performance RPC framework on HTTP/2 using protobuf. It supports unary, server-streaming, client-streaming, and bidirectional streams. Generated stubs feel like local calls."],
+  ["websockets", "WebSockets give full-duplex communication over one TCP connection. Browser clients use new WebSocket(url). Frames carry text or binary payloads. Heartbeats keep connections alive."],
+  ["webhooks", "A webhook is an HTTP callback sent to a URL when an event occurs. Signed payloads (HMAC) verify authenticity. Retries handle transient delivery failures."],
+  ["http-caching", "HTTP caching uses Cache-Control, ETag, and Last-Modified to avoid retransfer. Conditional requests send If-None-Match and respond 304 Not Modified."],
+
+  ["data-structures", "Core data structures: arrays, linked lists, hash maps, stacks, queues, heaps, trees, tries, graphs, disjoint set (union-find), bloom filters."],
+  ["big-o", "Big-O describes worst-case growth. Common: O(1) constant, O(log n) binary search, O(n) linear, O(n log n) sort, O(n^2) double loop, O(2^n) brute subsets."],
+  ["sorting", "Sorting: quicksort O(n log n) avg, mergesort O(n log n) stable, heapsort O(n log n), insertion O(n^2) good on tiny arrays, radix sort O(nk) for integers."],
+  ["binary-search", "Binary search finds a value in a sorted array in O(log n). Maintain low and high; halve the range each step. Variants: lower_bound, upper_bound, search-rotated."],
+  ["graphs", "A graph is a set of nodes connected by edges. Edges can be directed or weighted. Algorithms: BFS, DFS, Dijkstra, Bellman-Ford, A*, topological sort, Tarjan SCC."],
+  ["trees", "Trees: binary search trees, AVL, red-black, B-trees, tries, segment trees, Fenwick trees. Balanced trees keep O(log n) operations even after many updates."],
+  ["heaps", "A heap is a tree with the heap property (parent <= children for min-heap). Insert and extract are O(log n). Heaps back priority queues and heapsort."],
+  ["hashing", "A hash function maps any input to a fixed-size value. Hash tables use them for O(1) lookups. Collisions are resolved by chaining or open addressing."],
+  ["dynamic-programming", "Dynamic programming solves a problem by combining subproblem solutions. Memoize recursive calls or build a bottom-up table. Classic: knapsack, edit distance, LIS, LCS."],
+
+  ["git", "Git tracks code in commits on branches. Workflow: clone, branch, commit, push, pull request. Refs include HEAD, branches, and tags. The .git directory stores objects and the index."],
+  ["git-rebase", "git rebase replays your commits on top of another branch, rewriting history. Interactive rebase reorders, squashes, edits, or drops commits. Force-push is required after rewriting shared history."],
+  ["git-merge", "git merge integrates two branches. Fast-forward moves the pointer; recursive creates a merge commit. Conflicts pause the merge; resolve then commit."],
+  ["git-stash", "git stash saves uncommitted work onto a stack. git stash pop reapplies and drops. Useful when you need to switch context quickly."],
+  ["git-bisect", "git bisect performs binary search through commit history to find the one that introduced a bug. Mark commits good or bad; Git zeroes in fast."],
+
+  ["docker", "Docker packages an application and its dependencies into an image. Containers run images in isolated namespaces. A Dockerfile lists build steps. docker build, docker run."],
+  ["dockerfile", "A Dockerfile builds an image from instructions: FROM, COPY, RUN, ENV, EXPOSE, CMD, ENTRYPOINT. Multi-stage builds separate compile and runtime images for smaller results."],
+  ["kubernetes", "Kubernetes orchestrates containers across nodes. Pods are the smallest unit. Deployments manage replicas. Services expose pods on stable network names. ConfigMaps and Secrets inject configuration."],
+  ["docker-compose", "docker-compose declares multi-container apps in a YAML file. Services share a network by default. docker compose up builds and starts the stack."],
+
+  ["ci-cd", "Continuous integration runs tests on every push. Continuous delivery deploys to production automatically once tests pass. Pipelines are defined in YAML (GitHub Actions, GitLab CI, CircleCI)."],
+  ["github-actions", "GitHub Actions runs workflows on triggers like push, pull_request, schedule. Jobs run on hosted runners. Actions are reusable steps; composite actions wrap several steps."],
+  ["linting", "Linters detect style and bug-prone patterns. ESLint for JavaScript, pylint and ruff for Python, clippy for Rust. They run in pre-commit hooks and CI."],
+
+  ["clean-architecture", "Clean architecture separates concerns: entities, use cases, interface adapters, frameworks. Dependencies point inward. The core never depends on UI, database, or framework details."],
+  ["solid", "SOLID principles: Single responsibility, Open/closed, Liskov substitution, Interface segregation, Dependency inversion. They guide object-oriented design."],
+  ["dry-yagni-kiss", "DRY: don't repeat yourself. YAGNI: you aren't gonna need it. KISS: keep it simple. Together they argue against premature abstraction and speculative complexity."],
+  ["mvc", "MVC separates Model (state), View (display), Controller (input). Variants: MVVM, MVP. Most modern UI frameworks blur these into reactive components."],
+  ["event-driven", "Event-driven systems react to messages on a bus. Producers emit events; consumers subscribe. Decouples services and enables replay, audit, and scaling."],
+  ["microservices", "Microservices split a monolith into small services each owning data and deployment. They communicate over HTTP, gRPC, or queues. Trade-offs: independent deploys vs. distributed-systems pain."],
+
+  ["caching", "Caching trades freshness for speed. Layers: client, CDN, reverse proxy, application, database. Strategies: cache-aside, write-through, write-back, write-around."],
+  ["queues", "A message queue decouples producers from consumers. Examples: RabbitMQ, SQS, Kafka. Properties: ordering, durability, at-least-once vs. exactly-once delivery."],
+  ["kafka", "Apache Kafka is a distributed log. Producers write to topics partitioned across brokers. Consumers track offsets. High throughput, long retention, stream processing with Kafka Streams or Flink."],
+  ["load-balancing", "Load balancers distribute traffic across backends. Algorithms: round robin, least connections, weighted, hash by key. Layer 4 vs. layer 7. Health checks remove unhealthy nodes."],
+
+  ["auth-oauth2", "OAuth2 delegates access via tokens. Flows: authorization code (web apps), client credentials (server to server), device code (CLIs and TVs). Refresh tokens renew access without re-prompting."],
+  ["auth-jwt", "A JWT is a signed token with three Base64URL parts: header, payload, signature. It carries claims like sub and exp. Verify the signature; do not trust unverified tokens."],
+  ["auth-passwords", "Store passwords as salted hashes using a slow KDF: bcrypt, scrypt, argon2. Never use raw MD5 or SHA-256. Add per-user salt and rotate algorithms when better ones exist."],
+  ["tls", "TLS encrypts and authenticates network traffic. Handshake exchanges keys via ephemeral Diffie-Hellman; certificates prove identity. TLS 1.3 simplified the handshake and removed weak ciphers."],
+
+  ["security-xss", "XSS injects script into a victim's page. Mitigate by encoding output, using a strict Content-Security-Policy, and avoiding innerHTML with untrusted input."],
+  ["security-sql-injection", "SQL injection concatenates untrusted input into queries. Use parameterized statements or an ORM that does so. Never interpolate strings into SQL."],
+  ["security-csrf", "CSRF tricks a logged-in user's browser into firing a state-changing request. Mitigate with SameSite cookies, CSRF tokens, and double-submit cookies."],
+
+  ["frontend-react", "React renders UI from components. Hooks (useState, useEffect, useMemo, useContext) manage state and effects. The virtual DOM diffs and patches the real DOM."],
+  ["frontend-vue", "Vue is a progressive UI framework. Single-file components hold template, script, and style. Reactivity tracks dependencies automatically via getters and setters."],
+  ["frontend-svelte", "Svelte compiles components to efficient imperative JavaScript at build time. No virtual DOM at runtime. Reactivity uses $: labels."],
+  ["frontend-css-grid", "CSS Grid is a two-dimensional layout system. grid-template-columns, grid-template-rows, gap, place-items. Items can span tracks using grid-column and grid-row."],
+  ["frontend-flexbox", "Flexbox lays out items along one axis. display: flex sets the container. justify-content controls the main axis; align-items the cross axis. flex shorthand sets grow/shrink/basis."],
+
+  ["webgl-threejs", "Three.js renders 3D in WebGL. A scene contains meshes (geometry + material), lights, and a camera. The renderer draws the scene each frame; OrbitControls makes it interactive."],
+  ["browser-storage", "Browsers offer localStorage (5MB, sync), sessionStorage (per-tab), IndexedDB (large, async, transactional), Cache API (offline assets), and Cookies (small, sent with each request)."],
+  ["indexeddb", "IndexedDB is the browser's local database. It stores structured records in object stores indexed by keys. Reads and writes happen inside transactions."],
+  ["service-workers", "A service worker is a background script the browser keeps alive. It intercepts fetches, enables offline, runs push notifications, and can pre-cache assets."],
+
+  ["machine-learning", "Machine learning fits models that map inputs to outputs from examples. Supervised learning has labels; unsupervised finds structure; reinforcement learning learns from reward."],
+  ["neural-networks", "A neural network is layered linear transformations interleaved with nonlinear activations. Backpropagation computes gradients with the chain rule; an optimizer like Adam updates weights."],
+  ["embeddings", "Embeddings map text or items to vectors. Cosine similarity measures semantic closeness. Trained with skip-gram, transformers, or contrastive objectives."],
+  ["transformers", "Transformers process sequences with self-attention instead of recurrence. Each token attends to every other token weighted by learned queries, keys, and values."],
+  ["llms", "Large language models are transformers trained on web-scale text. They predict the next token, which compresses surprising amounts of reasoning, code, and world knowledge."],
+  ["rag", "Retrieval-augmented generation grounds an LLM in fresh facts. A retriever finds relevant chunks; the LLM conditions on them. Embeddings and vector stores power retrieval."],
+
+  ["distributed-systems", "Distributed systems trade simplicity for scale. Hard parts: failure detection, partitioning, replication, consistency, time. The CAP theorem says you cannot have consistency, availability, and partition tolerance at once."],
+  ["consensus", "Consensus protocols (Paxos, Raft) let a cluster agree on a value despite failures. Leaders coordinate replication. Used by etcd, ZooKeeper, CockroachDB, Kafka controllers."],
+  ["consistency-models", "Consistency models: strong (linearizable), sequential, causal, eventual. Pick what your workload tolerates; stronger guarantees cost latency."],
+
+  ["observability", "Observability covers logs (events), metrics (numbers over time), and traces (causal request paths). OpenTelemetry standardizes instrumentation across languages."],
+  ["logging", "Structured logs (JSON) are easier to query than free text. Include timestamp, level, request id, user id. Ship to a central store (Loki, ELK, Datadog)."],
+  ["metrics", "Metrics are time-series numbers: counters, gauges, histograms. Prometheus scrapes endpoints; Grafana visualizes."],
+  ["tracing", "Distributed tracing assigns each request a trace id propagated across services. Spans record start/end and parent ids. Jaeger and Tempo visualize traces."],
+
+  ["testing-unit", "Unit tests check one function in isolation. They are fast, deterministic, and run on every commit. Use mocks or fakes for external dependencies."],
+  ["testing-integration", "Integration tests check several components together: a real database, a real HTTP call, a queue. Slower but catch wiring bugs."],
+  ["testing-e2e", "End-to-end tests drive the running system as a user would: Playwright, Cypress, Selenium. They detect regressions but are slow and flaky if not careful."],
+  ["tdd", "Test-driven development: write a failing test, write the minimum code to pass, refactor. Repeat. Encourages small steps and tight design feedback."],
+
+  ["regex", "Regular expressions describe text patterns. Anchors ^ $, character classes [], quantifiers * + ? {n}, alternation |, groups (), lookaround (?=...) and (?<=...)."],
+  ["json", "JSON encodes objects, arrays, strings, numbers, booleans, and null. It is the lingua franca of web APIs. Beware of trailing commas (invalid) and integer precision."],
+  ["yaml", "YAML uses indentation for structure. Supports anchors and references. Whitespace mistakes are common; YAML 1.2 fixes the Norway problem with quoting."],
+  ["base64", "Base64 encodes binary as text using 64 characters. Output is ~33% larger than input. URL-safe Base64 replaces + and / with - and _."],
+
+  ["concurrency", "Concurrency interleaves tasks; parallelism runs them simultaneously. Primitives: threads, processes, coroutines, actors, channels. Common bugs: races, deadlocks, livelocks, starvation."],
+  ["mutex-locks", "A mutex enforces mutual exclusion. Always acquire in a consistent order to avoid deadlocks. Hold locks briefly. Prefer immutability where possible."],
+  ["atomic-ops", "Atomic operations (compare-and-swap, fetch-add) modify shared memory without locks. Lock-free data structures use them but are notoriously hard to write correctly."],
+
+  ["compilers", "A compiler turns source into another representation. Stages: lexer, parser, AST, type checker, IR, optimizer, code generator. JIT compilers compile at runtime."],
+  ["interpreters", "An interpreter executes source or bytecode directly. Tree-walking interpreters are simple; bytecode VMs (CPython, JVM) and JITs (V8, HotSpot) trade complexity for speed."],
+
+  ["functional-programming", "Functional programming favors pure functions, immutability, and higher-order functions. Map, filter, fold replace loops. Haskell, OCaml, F#, Elm push this farthest; Scala and Rust blend FP with OO."],
+  ["oop", "Object-oriented programming bundles state and behavior into objects. Inheritance, polymorphism, encapsulation. Composition often beats inheritance."],
+
+  ["api-versioning", "API versioning lets servers evolve without breaking clients. Strategies: URL path (/v1/), header, query parameter. Deprecate old versions with timelines and headers."],
+  ["pagination", "Pagination splits large result sets. Offset/limit is simple but inconsistent under concurrent writes. Cursor pagination (after=, before=) is stable."],
+  ["rate-limiting", "Rate limiting caps request rates per client. Algorithms: fixed window, sliding window, token bucket, leaky bucket. Return 429 with Retry-After."],
+
+  ["cors", "Browsers enforce same-origin policy. CORS headers (Access-Control-Allow-Origin, -Methods, -Headers) opt in to cross-origin requests. Preflight OPTIONS asks permission for non-simple methods."],
+  ["dns", "DNS resolves names to addresses. Records: A (IPv4), AAAA (IPv6), CNAME (alias), MX (mail), TXT (text), NS (nameservers). TTL controls caching."],
+  ["tcp-vs-udp", "TCP is reliable, ordered, connection-oriented. UDP is unreliable, unordered, fire-and-forget but low overhead. HTTP/1+2 ride TCP; HTTP/3 (QUIC) rides UDP."],
+];
