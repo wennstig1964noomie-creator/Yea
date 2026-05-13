@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas — Self-Learning AI Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <header id="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>ATLAS</h1>
+      <span class="sub">browser-resident knowledge brain</span>
+    </div>
+    <div class="stats" id="stats">
+      <span><b id="stat-nodes">0</b> nodes</span>
+      <span><b id="stat-edges">0</b> edges</span>
+      <span><b id="stat-thoughts">0</b> thoughts</span>
+      <span><b id="stat-chats">0</b> chats</span>
+      <span><b id="stat-agents">0</b> agents</span>
+    </div>
+  </header>
+
+  <aside id="sidepanel">
+    <nav class="tabs">
+      <button class="tab active" data-tab="chat">Chat</button>
+      <button class="tab" data-tab="teach">Teach</button>
+      <button class="tab" data-tab="agents">Agents</button>
+      <button class="tab" data-tab="thoughts">Thoughts</button>
+      <button class="tab" data-tab="node">Node</button>
+    </nav>
+
+    <section class="pane active" data-pane="chat">
+      <div id="chatlog"></div>
+      <form id="chatform">
+        <input id="chatinput" type="text" autocomplete="off"
+               placeholder="Ask Atlas anything..." />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <section class="pane" data-pane="teach">
+      <p class="hint">Paste anything: docs, notes, code, a SQL schema. Atlas
+        extracts concepts, builds nodes, and connects them to what it
+        already knows.</p>
+      <textarea id="teach-text" rows="9"
+                placeholder="Paste docs, notes, code, a SQL schema..."></textarea>
+      <div class="row">
+        <button id="teach-btn">Teach Atlas</button>
+        <button id="think-btn">Force a thought</button>
+        <button id="reset-btn" class="danger">Wipe brain</button>
+      </div>
+      <pre id="teach-result"></pre>
+    </section>
+
+    <section class="pane" data-pane="agents">
+      <div id="agentlist"></div>
+      <details class="newagent">
+        <summary>+ new agent</summary>
+        <input id="agent-name" placeholder="agent name (no spaces)" />
+        <input id="agent-purpose" placeholder="purpose" />
+        <input id="agent-schedule" type="number" min="5" value="60"
+               placeholder="schedule seconds" />
+        <textarea id="agent-code" rows="9">// Atlas runs this every interval. `ctx` is the agent handle.
+async function run(ctx) {
+  const stats = await ctx.stats();
+  ctx.log(`Atlas has ${stats.nodes} nodes and ${stats.edges} edges`);
+  await ctx.remember("ping", `Agent ${ctx.name} ran ok`);
+  return stats;
+}
+</textarea>
+        <button id="agent-create">create agent</button>
+      </details>
+    </section>
+
+    <section class="pane" data-pane="thoughts">
+      <p class="hint">Live feed of every reflection Atlas forms while
+        learning and thinking.</p>
+      <ul id="thoughtlist"></ul>
+    </section>
+
+    <section class="pane" data-pane="node">
+      <p class="hint">Click any node in the graph to inspect it.</p>
+      <div id="nodeinfo"></div>
+    </section>
+  </aside>
+
+  <div id="legend">
+    <div><span class="swatch concept"></span> concept</div>
+    <div><span class="swatch code"></span> code/db concept</div>
+    <div><span class="swatch doc"></span> document</div>
+    <div><span class="swatch agent"></span> agent</div>
+  </div>
+
+  <script type="module" src="atlas.js"></script>
+</body>
+</html>
