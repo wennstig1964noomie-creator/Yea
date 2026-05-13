@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+atlas/data/*.db
+atlas/data/*.db-wal
+atlas/data/*.db-shm
+atlas/learning_sources/.seen/
+.venv/
+.env
+.DS_Store
